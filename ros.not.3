@@ -1,0 +1,533 @@
+WRİTİNG A SİMPLE SERVİCE AND CLİENT (Python) Basit bir hizmet ve istemci yazma 
+
+Düğümler hizmetleri kullanarak iletişim kurduğunda, veri için istek gönderen düğüme istemci client  düğümü, isteğe yanıt veren düğüme ise hizmet düğümü service node denir. İsteğin ve yanıtın yapısı bir .srv dosyası tarafından belirlenir.
+
+Burada kullanılan örnek basit bir tamsayı toplama sistemidir; bir düğüm iki tam sayının toplamını ister ve diğeri sonuçla yanıt verir.
+-----------------
+
+1 CREATE A PACKAGE PAKET OLUŞTUR
+
+Yeni bir terminal açın ve ROS2 komutlarının çalışabilmesi için ROS 2 kurulumunuzu kaynaklayın.
+source /opt/ros/foxy/setup.bash
+
+Önceki bir eğitimde oluşturulan ros2_ws dizinine (directory) gidin.
+cd ~/ros2_ws/src
+
+Paketlerin çalışma alanının kökünde değil, src dizininde oluşturulması gerektiğini hatırlayın. ros2_ws/src'ye gidin ve yeni bir paket oluşturun:
+
+*****
+
+ros2 pkg create --build-type ament_python py_srvcli --dependencies rclpy example_interfaces
+
+
+Terminaliniz py_srvcli paketinizin ve gerekli tüm dosya ve klasörlerin oluşturulduğunu doğrulayan bir mesaj döndürecektir.
+
+--dependencies argümanı gerekli bağımlılık dependency  satırlarını package.xml dosyasına otomatik olarak ekleyecektir.
+ example_interfaces, isteklerinizi ve yanıtlarınızı yapılandırmak için ihtiyaç duyacağınız .srv dosyasını içeren pakettir:
+ 
+int64 a
+int64 b
+---
+int64 sum
+
+
+İlk iki satır isteğin parametreleridir ve kısa çizgilerin altında yanıt bulunur
+
+------------------
+1.1 UPDATE GÜNCELLEME   package.xml
+
+Paket oluşturma sırasında --dependencies seçeneğini kullandığınız için package.xml dosyasına dependenciesleri manuel olarak eklemeniz gerekmez.
+
+Ancak her zaman olduğu gibi açıklamayı maintainer email (bakımcı e postasını)
+,adını ve lisans  bilgilerini package.xml dosyasına eklediğinizden emin olun.
+
+<description>Python client server tutorial</description>
+<maintainer email="you@email.com">Your Name</maintainer>
+<license>Apache License 2.0</license>
+---------------------
+1.2 setup.py'yi güncelleyin UPDATE 
+
+Maintainer, maintainer_epostası, description ve license alanları için aynı bilgileri setup.py dosyasına ekleyin:
+
+maintainer='Your Name',
+maintainer_email='you@email.com',
+description='Python client server tutorial',
+license='Apache License 2.0',
+---------------
+2 Write the service node
+
+ros2_ws/src/py_srvcli/py_srvcli dizininde service_member_function.py adında yeni bir dosya oluşturun ve aşağıdaki kodu içine yapıştırın:
+
+from example_interfaces.srv import AddTwoInts
+
+import rclpy
+from rclpy.node import Node
+
+
+class MinimalService(Node):
+
+    def __init__(self):
+        super().__init__('minimal_service')
+        self.srv = self.create_service(AddTwoInts, 'add_two_ints', self.add_two_ints_callback)
+
+    def add_two_ints_callback(self, request, response):
+        response.sum = request.a + request.b
+        self.get_logger().info('Incoming request\na: %d b: %d' % (request.a, request.b))
+
+        return response
+
+
+def main(args=None):
+    rclpy.init(args=args)
+
+    minimal_service = MinimalService()
+
+    rclpy.spin(minimal_service)
+
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
+    
+    
+    2.1 Kodu inceleyelim
+
+İlk import ifadesi, AddTwoInts hizmet türünü example_interfaces paketinden içe aktarır. Aşağıdaki import ifadesi ROS 2 Python istemci kitaplığını ve özellikle Node sınıfını içe aktarır.
+
+from example_interfaces.srv import AddTwoInts
+
+import rclpy
+from rclpy.node import Node
+
+.......
+MinimalService sınıfı yapıcısı, düğümü minimal_service adıyla başlatır. Daha sonra bir hizmet oluşturur ve türünü, adını ve geri aramayı tanımlar.
+
+def __init__(self):
+    super().__init__('minimal_service')
+    self.srv = self.create_service(AddTwoInts, 'add_two_ints', self.add_two_ints_callback)
+    
+.............
+    
+Hizmet geri aramasının tanımı, istek verilerini alır, toplar ve toplamı yanıt olarak döndürür
+def add_two_ints_callback(self, request, response):
+    response.sum = request.a + request.b
+    self.get_logger().info('Incoming request\na: %d b: %d' % (request.a, request.b))
+
+    return response
+    
+    
+Son olarak ana sınıf, ROS 2 Python istemci kitaplığını başlatır, hizmet düğümünü oluşturmak için MinimalService sınıfını başlatır ve geri aramaları işlemek için düğümü döndürür.
+
+--------------------
+
+    2.2 Add an entry point
+    
+2.2 Giriş noktası ekleme
+
+Ros2 run komutunun düğümünüzü çalıştırmasına izin vermek için, giriş noktasını setup.py dosyasına (ros2_ws/src/py_srvcli dizininde bulunur) eklemelisiniz.
+
+'console_scripts': parantezleri arasına aşağıdaki satırı ekleyin:
+
+'service = py_srvcli.service_member_function:main',
+
+-------------------
+3 Write the client node
+3 İstemci düğümünü yazın
+
+ros2_ws/src/py_srvcli/py_srvcli dizininde client_member_function.py adında yeni bir dosya oluşturun ve aşağıdaki kodu içine yapıştırın:
+
+
+import sys
+
+from example_interfaces.srv import AddTwoInts
+import rclpy
+from rclpy.node import Node
+
+
+class MinimalClientAsync(Node):
+
+    def __init__(self):
+        super().__init__('minimal_client_async')
+        self.cli = self.create_client(AddTwoInts, 'add_two_ints')
+        while not self.cli.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('service not available, waiting again...')
+        self.req = AddTwoInts.Request()
+
+    def send_request(self, a, b):
+        self.req.a = a
+        self.req.b = b
+        self.future = self.cli.call_async(self.req)
+        rclpy.spin_until_future_complete(self, self.future)
+        return self.future.result()
+
+
+def main(args=None):
+    rclpy.init(args=args)
+
+    minimal_client = MinimalClientAsync()
+    response = minimal_client.send_request(int(sys.argv[1]), int(sys.argv[2]))
+    minimal_client.get_logger().info(
+        'Result of add_two_ints: for %d + %d = %d' %
+        (int(sys.argv[1]), int(sys.argv[2]), response.sum))
+
+    minimal_client.destroy_node()
+    rclpy.shutdown()
+
+
+if __name__ == '__main__':
+    main()
+    
+ --------------
+ 3.2 Giriş noktası ekleme
+
+Hizmet düğümünde olduğu gibi, istemci düğümünü çalıştırabilmek için bir giriş noktası da eklemeniz gerekir.
+
+setup.py dosyanızın entry_points alanı şu şekilde görünmelidir:
+
+entry_points={
+    'console_scripts': [
+        'service = py_srvcli.service_member_function:main',
+        'client = py_srvcli.client_member_function:main',
+    ],
+},
+
+-----------------------------------------------
+
+4 Build and run  Derleyin ve çalıştırın
+
+
+Oluşturmadan önce eksik bağımlılıkları kontrol etmek için çalışma alanınızın kökünde (ros2_ws) rosdep çalıştırmak iyi bir uygulamadır:
+
+rosdep install -i --from-path src --rosdistro foxy -y
+
+
+Çalışma alanınızın kökü olan ros2_ws'ye geri dönün ve yeni paketinizi oluşturun:
+
+colcon build --packages-select py_srvcli
+
+
+Yeni bir terminal açın, ros2_ws'ye gidin ve kurulum dosyalarını kaynaklayın:
+
+source install/setup.bash
+
+Şimdi hizmet düğümünü çalıştırın: service node
+
+ros2 run py_srvcli service
+
+
+The node will wait for the client’s request.Düğüm müşterinin isteğini bekleyecektir.
+
+Başka bir terminal açın ve kurulum dosyalarını ros2_ws içinden tekrar kaynaklayın. İstemci düğümünü başlatın ve ardından boşlukla ayrılmış herhangi iki tam sayıyı ekleyin:
+**********
+
+ros2 run py_srvcli client 2 3
+
+Örneğin 2 ve 3'ü seçerseniz müşteri şöyle bir yanıt alır:
+
+[INFO] [minimal_client_async]: Result of add_two_ints: for 2 + 3 = 5
+
+
+Hizmet düğümünüzün service node çalıştığı terminale dönün. İsteği aldığında günlük mesajlarını yayınladığını göreceksiniz:
+
+[INFO] [minimal_service]: Incoming request
+a: 2 b: 3
+
+    
+Düğümün dönmesini durdurmak için sunucu terminalinde Ctrl+C tuşlayın.
+
+özett
+
+Bir hizmet üzerinden veri istemek ve yanıt vermek için iki düğüm oluşturdunuz. Bağımlılıklarını ve yürütülebilir dosyalarını paket yapılandırma dosyalarına eklediniz, böylece bunları oluşturup çalıştırabilir, böylece bir hizmet/istemci sistemini iş başında görebilirsin
+
+    
+-----------------------------------------------------------------------------------
+
+Özel msg ve srv dosyaları oluşturma
+Özel arayüz dosyalarını (.msg ve .srv) tanımlayın ve bunları Python düğümleriyle kullanın
+Önceden tanımlanmış arayüz tanımlarını kullanmak iyi bir uygulama olsa da, bazen kendi mesajlarınızı ve hizmetlerinizi de tanımlamanız gerekebilir. Bu eğitim size özel arayüz tanımları oluşturmanın en basit yöntemini tanıtacaktır.
+
+1 Yeni bir paket oluşturun
+Bu eğitim için özel .msg ve .srv dosyalarını kendi paketlerinde oluşturacak ve daha sonra bunları ayrı bir pakette kullanacaksınız. Her iki paket de aynı çalışma alanında olmalıdır.
+
+Daha önceki eğitimlerde oluşturulan pub/sub ve service/client paketlerini kullanacağımız için, bu paketlerle aynı çalışma alanında olduğunuzdan emin olun (ros2_ws/src) ve ardından yeni bir paket oluşturmak için aşağıdaki komut:
+
+
+ros2 pkg create --build-type ament_cmake tutorial_interfaces
+
+tutorial_interfaces yeni paketin adıdır. Bunun bir CMake paketi olduğunu unutmayın; şu anda saf Python paketinde .msg veya .srv dosyası oluşturmanın bir yolu yoktur. CMake paketinde özel bir arayüz oluşturabilir ve ardından bunu son bölümde ele alınacak olan Python düğümünde kullanabilirsiniz.
+
+
+.msg ve .srv dosyalarının sırasıyla msg ve srv adı verilen dizinlere yerleştirilmesi gerekmektedir. ros2_ws/src/tutorial_interfaces'te dizinleri oluşturun:
+
+mkdir msg
+
+mkdir srv
+----------------------------------
+2 Özel tanımlar oluşturun
+2.1 msg tanımı
+Az önce oluşturduğunuz tutorial_interfaces/msg dizininde, veri yapısını bildiren bir kod satırı içeren Num.msg adında yeni bir dosya oluşturun:
+
+int64 num
+
+Bu, num adı verilen 64 bitlik tek bir tamsayıyı aktaran özel bir mesajdır.
+
+Ayrıca az önce oluşturduğunuz tutorial_interfaces/msg dizininde aşağıdaki içeriğe sahip Sphere.msg adında yeni bir dosya oluşturun:
+
+geometry_msgs/Point center
+float64 radius
+
+Bu özel mesaj başka bir mesaj paketindeki bir mesajı kullanıyor
+
+------------------------
+2.2 srv tanımı
+Az önce oluşturduğunuz tutorial_interfaces/srv dizinine geri döndüğünüzde, aşağıdaki istek ve yanıt yapısına sahip AddThreeInts.srv adında yeni bir dosya oluşturun:
+
+int64 a
+int64 b
+int64 c
+---
+int64 sum
+
+Bu, a, b ve c adlı üç tam sayıyı talep eden ve toplam adı verilen bir tam sayıyla yanıt veren özel hizmetinizdir.
+--------------------------------------
+3. CMakeLists.txt
+
+Tanımladığınız arayüzleri dile özgü koda (C++ ve Python gibi) dönüştürerek bu dillerde kullanılabileceklerini sağlamak için CMakeLists.txt dosyasına aşağıdaki satırları ekleyin:
+
+find_package(geometry_msgs REQUIRED)
+find_package(rosidl_default_generators REQUIRED)
+
+rosidl_generate_interfaces(${PROJECT_NAME}
+  "msg/Num.msg"
+  "msg/Sphere.msg"
+  "srv/AddThreeInts.srv"
+  DEPENDENCIES geometry_msgs
+)
+
+
+
+4.package.xml
+Interface'lerin dil özel kodlarını oluşturmak için rosidl_default_generators'a bağımlılığı belirtmek için package.xml dosyanıza aşağıdaki satırları ekleyin:
+
+<depend>geometry_msgs</depend>
+<build_depend>rosidl_default_generators</build_depend>
+<exec_depend>rosidl_default_runtime</exec_depend>
+<member_of_group>rosidl_interface_packages</member_of_group>
+
+5. tutorial_interfaces paketini derleyin
+Şimdi custom interface paketinizin tüm parçaları yerine geldiğine göre, paketi derlemek için şu komutu çalıştırın:
+
+colcon build --packages-select tutorial_interfaces
+
+6. msg ve srv oluşturulmasını doğrulayın
+Yeni arayüz oluşturmanın çalışıp çalışmadığını doğrulamak için şu komutları çalıştırın:
+
+. install/setup.bash
+
+ros2 interface show tutorial_interfaces/msg/Num
+
+return: int64 num
+
+ros2 interface show tutorial_interfaces/msg/Sphere
+
+return:
+ geometry_msgs/Point center
+        float64 x
+        float64 y
+        float64 z
+float64 radius
+
+ros2 interface show tutorial_interfaces/srv/AddThreeInts
+
+return:
+
+int64 a
+int64 b
+int64 c
+---
+int64 sum
+
+
+
+bilgiler
+Çalışma Alanı (Workspace) Nedir?
+ROS 2 projelerinizin bulunduğu temel dizine "çalışma alanı" denir. Bu dizin, genellikle birçok ROS 2 paketini içerir ve projenizin tüm kaynak kodları, yapılandırma dosyaları ve derlenmiş dosyaları burada bulunur. ROS 2 çalışma alanınızda birçok paket bulunabilir ve her bir paket, bir veya birden fazla ROS 2 düğümünü içerebilir.
+
+Örneğin, çalışma alanı dizininiz şu şekilde olabilir:
+
+ros2_ws/
+|-- build/
+|-- install/
+|-- log/
+|-- src/
+|   |-- tutorial_interfaces/
+|   |   |-- msg/
+|   |   |   |-- Num.msg
+|   |   |   |-- Sphere.msg
+|   |   |-- srv/
+|   |   |   |-- AddThreeInts.srv
+|-- CMakeLists.txt
+|-- package.xml
+
+
+src/ dizini, projenizin kaynak kodlarını içerir. Bu dizin içindeki alt dizinler, her biri bir ROS 2 paketini temsil eder. 
+tutorial_interfaces paketi, bu örnekte özel mesajları ve hizmeti içerir.
+
+build/ dizini, projenizin derleme süreci sırasında oluşturulan geçici dosyaları içerir.
+install/ dizini, projenizin derlendikten sonra yüklenmiş durumdaki dosyalarını içerir.
+log/ dizini, ROS 2 düğümlerinden gelen günlük dosyalarını içerir. Bu dosyalar, düğümlerin çalışması sırasında oluşan çeşitli olayları içerir.
+
+
+ROS 2 çalışma alanınızı oluşturmak için şu komutları kullanabilirsiniz:
+mkdir -p ros2_ws/src
+cd ros2_ws/src
+ros2 pkg create --build-type ament_cmake tutorial_interfaces
+
+Bu komutlar, ros2_ws adında bir çalışma alanı oluşturur ve içinde src adında bir alt dizin yaratır. src dizini, projenizin kaynak kodlarını içerir ve burada ROS 2 paketlerini bulabilirsiniz.
+
+
+
+ özel mesaj ve hizmet tanımları, genellikle paketin msg/ ve srv/ alt dizinlerinde bulunur. Örneğin, tutorial_interfaces paketinin dizin yapısı şu şekildedir:
+
+tutorial_interfaces/
+|-- msg/
+|   |-- Num.msg
+|   |-- Sphere.msg
+|-- srv/
+|   |-- AddThreeInts.srv
+
+msg/ dizini, özel mesaj tanımlarını içerir. Örneğin, Num.msg ve Sphere.msg.
+srv/ dizini, özel hizmet tanımlarını içerir. Örneğin, AddThreeInts.srv.
+Bu dizinler içindeki dosyalar, ROS 2 tarafından kullanılmak üzere tanımlanan veri yapılarını ve hizmet arayüzlerini içerir.
+
+------------------------------------------------------------------------------------------
+IMPLEMENTİNG  CUSTOM İNTERFACES
+
+Adım 1: Paket Oluşturma
+ROS 2 çalışma alanınızdaki src dizininde more_interfaces adında bir paket oluştur
+
+ros2 pkg create --build-type ament_cmake more_interfaces
+
+Adım 2: Mesaj Dosyası Oluşturma
+more_interfaces/msg dizininde AddressBook.msg adında bir dosya oluşturduk ve içine bir kişi hakkında bilgi içeren bir mesaj tanımladık.
+
+bool FEMALE=true
+bool MALE=false
+
+string first_name
+string last_name
+bool gender
+uint8 age
+string address
+
+Bu mesaj, bir kişi hakkındaki bilgileri taşımak için tasarlanmıştır ve 5 alan içerir:
+
+first_name: string türünde
+last_name: string türünde
+gender: bool türünde ve MALE veya FEMALE olabilir
+age: uint8 türünde
+address: string türünde
+
+Adım 3: Mesajı Kullanan Kodu Yazma
+3.1. more_interfaces/src dizininde publish_address_book.cpp adında bir dosya oluşturduk ve içine bir yayıncı (publisher) yazdık. Bu yayıncı, belirli aralıklarla tanımlanan bir kişi bilgisini yayınlıyor.
+
+3.2. Yayıncıyı derledik ve aynı paket içindeki mesajları kullanabilmek için CMake dosyasına gerekli kodu ekledik.
+
+3.3. Ardından, publish_address_book isimli bu yayıncıyı çalıştırdık ve oluşturduğumuz mesajların address_book konusunda yayınlandığını gözlemledik.
+
+
+ ROS 2'de özel mesaj türleri oluşturma ve bunları aynı paket içinde kullanma
+
+----------------------------------------
+paket oluşturma
+1.1. Yeni bir terminal açın ve ROS 2 yüklemenizin etkili olması için ROS 2 yüklemenizi kaynak olarak ekleyin.
+
+1.2. ros2_ws adında yeni bir çalışma alanı oluşturun ve python_parameters adında bir paket ekleyin:
+
+ros2 pkg create --build-type ament_python python_parameters --dependencies rclpy
+
+1.3. package.xml dosyasını güncelleyerek paket açıklaması, bakım yapan kişi bilgileri ve lisans bilgilerini ekleyin.
+
+<description>Python parameter tutorial</description>
+<maintainer email="you@email.com">Your Name</maintainer>
+<license>Apache License 2.0</license>
+
+
+3.2. ROS 2 çalışma alanınızı oluşturma:
+colcon build --packages-select python_parameters
+
+3.3. Çalışma alanınızı kaynak olarak ekleyerek setup dosyalarını çalıştırma:
+. install/setup.bash
+
+3.4. Node'u çalıştırma:
+ros2 run python_parameters minimal_param_node
+
+3.5. Parametreyi konsol aracılığıyla değiştirme:
+ros2 param set /minimal_param_node my_parameter earth
+
+3.7. Launch dosyasını kullanarak node'u başlatma:
+ros2 launch python_parameters python_parameters_launch.py
+-----------------------------------------
+
+Adım 1: ROS 2 Kurulumunu Kontrol Etme
+ROS 2 kurulumunuzun genel durumunu kontrol etmek için:
+
+ros2 doctor
+
+Bu komut, ROS 2'nin çeşitli modüllerini kontrol eder ve olası hatalar ve sorunların nedenlerini size bildirir.
+
+
+Eğer ROS 2 kurulumunuz sorunsuzsa, şu veya buna benzer bir mesaj göreceksiniz:
+
+All <n> checks passed
+
+Ancak, birkaç uyarı almak da olağandır. UserWarning, kurulumunuzun kullanılamaz olduğu anlamına gelmez; genellikle, bir şeyin ideal olmayan bir şekilde yapılandırıldığını belirten bir işarettir.
+
+
+Eğer bir uyarı alırsanız, bu şu şekilde görünecektir:
+
+<path>: <line>: UserWarning: <message>
+
+Örneğin, ROS 2'nin kararlı olmayan bir sürümünü kullandığınızda, şu tür bir uyarı alabilirsiniz:
+
+UserWarning: Distribution <distro> is not fully supported or tested. To get more consistent features, download a stable version at https://index.ros.org/doc/ros2/Installation/
+
+
+
+Adım 2: Çalışan Bir Sistem Üzerinde Kontrol Etme
+Turtlesim örneğini kullanarak bir çalışan ROS 2 sistemini kontrol etmek için:
+
+ros2 run turtlesim turtlesim_node
+
+ros2 run turtlesim turtle_teleop_key
+
+Ardından, ros2 doctor komutunu çalıştırarak sistemi inceleyebilir ve uyarıları görebilirsiniz.
+
+Bu adımda, /turtlesim düğümünün /turtle1/color_sensor ve /turtle1/pose konularına yayın yaptığını, ancak bu konulara abone olan bir düğüm olmadığı için uyarılar alacağınızı göreceksiniz. İlgili konulara abone olan bir düğüm başlattığınızda, uyarılar kaybolacaktır.
+
+
+Adım 3: Tam Bir Rapor Alma
+Eğer daha fazla detaylı bir rapor almak istiyorsanız, --report argümanını kullanarak:
+
+ros2 doctor --report
+
+Bu, beş gruba kategorize edilmiş bir bilgi listesi döndürecektir:
+
+NETWORK CONFIGURATION
+PLATFORM INFORMATION
+RMW MIDDLEWARE
+ROS 2 INFORMATION
+TOPIC LIST
+
+
+
+
+
+
+
+
+
+
+
+   
